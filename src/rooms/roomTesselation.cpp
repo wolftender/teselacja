@@ -90,7 +90,7 @@ namespace mini::gk2 {
 		ID3D11Buffer * vsb[] = { m_cbWorldMatrix.get (),  m_cbViewMatrix.get (), m_cbProjectionMatrix.get () };
 		m_device.context ()->VSSetConstantBuffers (0, 3, vsb); //Vertex Shaders - 0: worldMtx, 1: viewMtx,invViewMtx, 2: projMtx
 
-		ID3D11Buffer * dsb[] = { m_cbWorldMatrix.get (),  m_cbViewMatrix.get (), m_cbProjectionMatrix.get (), m_cbTextureOffset.get (), m_cbTessFactor.get ()};
+		ID3D11Buffer * dsb[] = { m_cbWorldMatrix.get (),  m_cbViewMatrix.get (), m_cbProjectionMatrix.get (), m_cbTextureOffset.get () };
 		m_device.context ()->DSSetConstantBuffers (0, 4, dsb);
 
 		ID3D11Buffer * psb[] = { m_cbSurfaceColor.get (), m_cbLightPos.get () };

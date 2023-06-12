@@ -40,10 +40,6 @@ cbuffer cbTextureOffset : register(b3) {
     float4 texOffset;
 }
 
-cbuffer cbTessFactor : register(b4) {
-    uint2 tessFactor;
-}
-
 Texture2D heightMap : register(t0);
 SamplerState samp : register(s0);
 
@@ -143,8 +139,12 @@ DS_OUTPUT main(
     Output.tex.x = lerp (texStart.x, texEnd.x, domain.y);
     Output.tex.y = lerp (texStart.y, texEnd.y, domain.x);
 
-    float height = heightMap.SampleLevel(samp, Output.tex.xy, 0).x;
-    Output.worldPos += Output.norm * height * 0.08f;
+    float z = min(100.0f, max(0.01f, length (camWorldPos - Output.worldPos)));
+    float factor = -16.0f * log10(z * 0.01f);
+    float mipLevel = 6.0f - log2(factor);
+
+    float height = heightMap.SampleLevel(samp, Output.tex.xy, mipLevel).x;
+    Output.worldPos += Output.norm * height * 0.1f;
 
     Output.viewVec = normalize (camWorldPos - Output.worldPos);
     Output.pos = mul (projMatrix, mul (viewMatrix, float4(Output.worldPos, 1.0f)));
