@@ -10,6 +10,7 @@ namespace mini::gk2 {
 			m_cbViewMatrix (m_device.CreateConstantBuffer<XMFLOAT4X4, 2> ()),
 			m_cbSurfaceColor (m_device.CreateConstantBuffer<XMFLOAT4> ()),
 			m_cbLightPos (m_device.CreateConstantBuffer<XMFLOAT4> ()),
+			m_cbTessFactor (m_device.CreateConstantBuffer<XMUINT4> ()),
 			m_showWireframe (false), 
 			m_preset (0),
 			m_numVerticesX (PATCHES_WIDTH * 3 + 1),
@@ -18,7 +19,8 @@ namespace mini::gk2 {
 			m_numIndices (PATCHES_WIDTH * PATCHES_WIDTH * 16),
 			m_controlPoints (m_numVertices),
 			m_indices (m_numIndices),
-			m_vertexStride (sizeof (XMFLOAT3)) {
+			m_vertexStride (sizeof (XMFLOAT3)),
+			m_tessFactor ({16U, 16U}) {
 
 		// initialize bezier patch control points
 		const float offsetX = (static_cast<float> (m_numVerticesX - 1)) / 2.0f;
@@ -53,6 +55,9 @@ namespace mini::gk2 {
 
 		XMStoreFloat4x4 (&m_teapotMatrix, XMMatrixIdentity ());
 
+		// update tess factor
+		UpdateBuffer (m_cbTessFactor, m_tessFactor);
+
 		// set light positions
 		m_lightPos = { 10.0f, 10.0f, 10.0f, 1.0f };
 
@@ -82,6 +87,9 @@ namespace mini::gk2 {
 
 		ID3D11Buffer * psb[] = { m_cbSurfaceColor.get (), m_cbLightPos.get () };
 		m_device.context ()->PSSetConstantBuffers (0, 2, psb); //Pixel Shaders - 0: surfaceColor, 1: lightPos[2]
+
+		ID3D11Buffer * hsb[] = { m_cbTessFactor.get () };
+		m_device.context ()->HSSetConstantBuffers (0, 1, hsb);
 
 		// Imgui
 		IMGUI_CHECKVERSION ();
@@ -128,6 +136,7 @@ namespace mini::gk2 {
 		ResetRenderTarget ();
 		m_UpdateCameraCB ();
 
+		UpdateBuffer (m_cbTessFactor, m_tessFactor);
 		UpdateBuffer (m_cbSurfaceColor, XMFLOAT4 (1.0f, 1.0f, 1.0f, 1.0f));
 		UpdateBuffer (m_cbLightPos, m_lightPos);
 		
@@ -211,7 +220,7 @@ namespace mini::gk2 {
 
 					case BezierSurfacePreset::Sinusoid:
 						float t = XM_PI * static_cast<float>(v) / 3.0f;
-						m_controlPoints[index].y = 2.0f * sinf (t);
+						m_controlPoints[index].y = 1.5f * sinf (t);
 						break;
 				}
 			}
@@ -264,6 +273,22 @@ namespace mini::gk2 {
 
 		prefixLabel ("Light Z", 250.0f);
 		ImGui::InputFloat ("##lightz", &m_lightPos.z);
+
+		{
+			int tessin = m_tessFactor.x, tessout = m_tessFactor.y;
+			bool tessChange = false;
+
+			prefixLabel ("Tess F. In.", 250.0f);
+			tessChange = ImGui::InputInt ("##tessin", &tessin) || tessChange;
+
+			prefixLabel ("Tess F. Out.", 250.0f);
+			tessChange = ImGui::InputInt ("##tessout", &tessout) || tessChange;
+
+			if (tessChange) {
+				m_tessFactor.x = min (32, max (5, tessin));
+				m_tessFactor.y = min (32, max (5, tessout));
+			}
+		}
 
 		prefixLabel ("Preset", 250.0f);
 		bool presetChanged = ImGui::Combo ("##bezierpreset", &m_preset, PRESETS, 4);

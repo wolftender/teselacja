@@ -48,6 +48,7 @@ namespace mini::gk2 {
 			dx_ptr<ID3D11Buffer> m_cbProjectionMatrix;
 			dx_ptr<ID3D11Buffer> m_cbSurfaceColor;		// pixel shader constant buffer slot 0
 			dx_ptr<ID3D11Buffer> m_cbLightPos;			// pixel shader constant buffer slot 1
+			dx_ptr<ID3D11Buffer> m_cbTessFactor;
 
 			dx_ptr<ID3D11Buffer> m_vertexBuffer;
 			dx_ptr<ID3D11Buffer> m_indexBuffer;
@@ -76,6 +77,7 @@ namespace mini::gk2 {
 			// user interface editable variables
 			bool m_showWireframe;
 			int m_preset;
+			XMUINT2 m_tessFactor;
 
 		public:
 			using Base = DxApplication;
