@@ -34,7 +34,7 @@ namespace mini::gk2 {
 		XMStoreFloat4x4 (&m_teapotMatrix, XMMatrixIdentity ());
 
 		// set light positions
-		m_lightPos = { 1.0f, 1.0f, 1.0f, 1.0f };
+		m_lightPos = { 2.0f, 2.0f, 2.0f, 1.0f };
 
 		// load meshes
 		m_meshTeapot = Mesh::LoadMesh (m_device, L"resources/meshes/teapot.mesh");

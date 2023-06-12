@@ -117,10 +117,10 @@ DS_OUTPUT main(
 
     Output.worldPos = decasteljeu (p0, p1, p2, p3, domain.y);
 
-    float4 viewPos = mul (viewMatrix, float4(Output.worldPos, 1.0f));
+    float4 camWorldPos = mul(invViewMatrix, float4(0.0f, 0.0f, 0.0f, 1.0f));
 
-    Output.viewVec = normalize(viewPos);
-	Output.pos = mul (projMatrix, viewPos);
+    Output.viewVec = normalize(camWorldPos - Output.worldPos);
+	Output.pos = mul (projMatrix, mul (viewMatrix, float4(Output.worldPos, 1.0f)));
 
     float3 du = derivative (t0, t1, t2, t3, domain.x);
     float3 dv = derivative (p0, p1, p2, p3, domain.y);
