@@ -49,6 +49,7 @@ namespace mini::gk2 {
 			dx_ptr<ID3D11Buffer> m_cbSurfaceColor;		// pixel shader constant buffer slot 0
 			dx_ptr<ID3D11Buffer> m_cbLightPos;			// pixel shader constant buffer slot 1
 			dx_ptr<ID3D11Buffer> m_cbTessFactor;
+			dx_ptr<ID3D11Buffer> m_cbTextureOffset;
 
 			dx_ptr<ID3D11Buffer> m_vertexBuffer;
 			dx_ptr<ID3D11Buffer> m_indexBuffer;
@@ -67,6 +68,11 @@ namespace mini::gk2 {
 
 			dx_ptr<ID3D11InputLayout> m_inputlayout;
 			dx_ptr<ID3D11RasterizerState> m_rsSolid, m_rsWireframe;
+
+			dx_ptr<ID3D11ShaderResourceView> m_textureNormal;
+			dx_ptr<ID3D11ShaderResourceView> m_textureDiffuse;
+			dx_ptr<ID3D11ShaderResourceView> m_textureHeight;
+			dx_ptr<ID3D11SamplerState> m_sampler;
 
 			XMFLOAT4X4 m_projectionMatrix, m_teapotMatrix;
 			XMFLOAT4 m_lightPos;

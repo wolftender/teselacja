@@ -3,10 +3,12 @@ struct DS_OUTPUT {
     float3 worldPos : POSITION0;
     float3 norm : NORMAL0;
     float3 viewVec : NORMAL1;
+    float3 tangent : TANGENT0;
+    float2 tex : TEXCOORD0;
 };
 
 struct HS_CONTROL_POINT_OUTPUT {
-	float3 vPosition : WORLDPOS; 
+	float3 vPosition : WORLDPOS;
 };
 
 struct HS_CONSTANT_DATA_OUTPUT {
@@ -33,6 +35,17 @@ cbuffer cbProj : register(b2) //Vertex Shader constant buffer slot 2
 {
     matrix projMatrix;
 };
+
+cbuffer cbTextureOffset : register(b3) {
+    float4 texOffset;
+}
+
+cbuffer cbTessFactor : register(b4) {
+    uint2 tessFactor;
+}
+
+Texture2D heightMap : register(t0);
+SamplerState samp : register(s0);
 
 float3 decasteljeu (float3 b00, float3 b01, float3 b02, float3 b03, float t) {
     float t1 = t;
@@ -117,14 +130,24 @@ DS_OUTPUT main(
 
     Output.worldPos = decasteljeu (p0, p1, p2, p3, domain.y);
 
-    float4 camWorldPos = mul(invViewMatrix, float4(0.0f, 0.0f, 0.0f, 1.0f));
+    float2 texStart = texOffset.xy;
+    float2 texEnd = texStart + texOffset.zw;
 
-    Output.viewVec = normalize(camWorldPos - Output.worldPos);
-	Output.pos = mul (projMatrix, mul (viewMatrix, float4(Output.worldPos, 1.0f)));
+    float4 camWorldPos = mul(invViewMatrix, float4(0.0f, 0.0f, 0.0f, 1.0f));
 
     float3 du = derivative (t0, t1, t2, t3, domain.x);
     float3 dv = derivative (p0, p1, p2, p3, domain.y);
+
     Output.norm = normalize (cross (dv, du));
+    Output.tangent = normalize (dv);
+    Output.tex.x = lerp (texStart.x, texEnd.x, domain.y);
+    Output.tex.y = lerp (texStart.y, texEnd.y, domain.x);
+
+    float height = heightMap.SampleLevel(samp, Output.tex.xy, 0).x;
+    Output.worldPos += Output.norm * height * 0.08f;
+
+    Output.viewVec = normalize (camWorldPos - Output.worldPos);
+    Output.pos = mul (projMatrix, mul (viewMatrix, float4(Output.worldPos, 1.0f)));
 
 	return Output;
 }

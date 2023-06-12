@@ -11,6 +11,7 @@ namespace mini::gk2 {
 			m_cbSurfaceColor (m_device.CreateConstantBuffer<XMFLOAT4> ()),
 			m_cbLightPos (m_device.CreateConstantBuffer<XMFLOAT4> ()),
 			m_cbTessFactor (m_device.CreateConstantBuffer<XMUINT4> ()),
+			m_cbTextureOffset (m_device.CreateConstantBuffer<XMFLOAT4> ()),
 			m_showWireframe (false), 
 			m_preset (0),
 			m_numVerticesX (PATCHES_WIDTH * 3 + 1),
@@ -64,6 +65,11 @@ namespace mini::gk2 {
 		// load meshes
 		m_meshTeapot = Mesh::LoadMesh (m_device, L"resources/meshes/teapot.mesh");
 
+		// load textures
+		m_textureNormal = m_device.CreateShaderResourceView (L"resources/textures/normals.dds");
+		m_textureDiffuse = m_device.CreateShaderResourceView (L"resources/textures/diffuse.dds");
+		m_textureHeight = m_device.CreateShaderResourceView (L"resources/textures/height.dds");
+
 		auto vsCode = m_device.LoadByteCode (L"bezierVS.cso");
 		auto psCode = m_device.LoadByteCode (L"bezierPS.cso");
 		auto hsCode = m_device.LoadByteCode (L"bezierHS.cso");
@@ -83,7 +89,9 @@ namespace mini::gk2 {
 		// Not all slots will be use by each shader
 		ID3D11Buffer * vsb[] = { m_cbWorldMatrix.get (),  m_cbViewMatrix.get (), m_cbProjectionMatrix.get () };
 		m_device.context ()->VSSetConstantBuffers (0, 3, vsb); //Vertex Shaders - 0: worldMtx, 1: viewMtx,invViewMtx, 2: projMtx
-		m_device.context ()->DSSetConstantBuffers (0, 3, vsb);
+
+		ID3D11Buffer * dsb[] = { m_cbWorldMatrix.get (),  m_cbViewMatrix.get (), m_cbProjectionMatrix.get (), m_cbTextureOffset.get (), m_cbTessFactor.get ()};
+		m_device.context ()->DSSetConstantBuffers (0, 4, dsb);
 
 		ID3D11Buffer * psb[] = { m_cbSurfaceColor.get (), m_cbLightPos.get () };
 		m_device.context ()->PSSetConstantBuffers (0, 2, psb); //Pixel Shaders - 0: surfaceColor, 1: lightPos[2]
@@ -112,6 +120,18 @@ namespace mini::gk2 {
 
 		rd.FillMode = D3D11_FILL_WIREFRAME;
 		m_rsWireframe = m_device.CreateRasterizerState (rd);
+
+		// sampler
+		SamplerDescription sd;
+		sd.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
+		sd.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
+		sd.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
+		sd.BorderColor[0] = 0.0f;
+		sd.BorderColor[1] = 0.0f;
+		sd.BorderColor[2] = 0.0f;
+		sd.BorderColor[3] = 1.0f;
+
+		m_sampler = m_device.CreateSamplerState (sd);
 	}
 
 	RoomTesselation::~RoomTesselation () {
@@ -128,6 +148,13 @@ namespace mini::gk2 {
 		if (!ImGui::GetIO ().WantCaptureMouse) {
 			HandleCameraInput (dt);
 		}
+
+		float dist = m_camera.getDistance ();
+		float z = min (100.0f, max (0.01f, dist));
+		float factor = -16.0f * log10f (z * 0.01f);
+
+		unsigned int tess = static_cast<unsigned int> (floorf (factor));
+		m_tessFactor = { tess * 2, tess * 2 };
 	}
 
 	void RoomTesselation::Render () {
@@ -158,7 +185,43 @@ namespace mini::gk2 {
 		m_device.context ()->IASetVertexBuffers (0, 1, &b, &m_vertexStride, &offset);
 		m_device.context ()->IASetPrimitiveTopology (D3D11_PRIMITIVE_TOPOLOGY_16_CONTROL_POINT_PATCHLIST);
 
-		m_device.context ()->DrawIndexed (m_numIndices, 0, 0);
+		// bind sampler and texture
+		constexpr ID3D11ShaderResourceView * nullSrv[1] = { nullptr };
+		ID3D11ShaderResourceView * psr[2] = { m_textureDiffuse.get (), m_textureNormal.get () };
+		ID3D11ShaderResourceView * dsr[1] = { m_textureHeight.get () };
+		auto sampler = m_sampler.get ();
+
+		m_device.context ()->DSSetSamplers (0, 1, &sampler);
+		m_device.context ()->PSSetSamplers (0, 1, &sampler);
+
+		m_device.context ()->DSSetShaderResources (0, 1, dsr);
+		m_device.context ()->PSSetShaderResources (0, 2, psr);
+
+		for (int patchId = 0; patchId < PATCHES_WIDTH * PATCHES_WIDTH; ++patchId) {
+			float patchX = static_cast<float>(patchId % PATCHES_WIDTH);
+			float patchY = static_cast<float>(patchId / PATCHES_WIDTH);
+			float patchTexWidth = 1.0f / static_cast<float>(PATCHES_WIDTH);
+			float patchTexHeight = 1.0f / static_cast<float>(PATCHES_WIDTH);
+			float patchTexOffsetX = patchTexWidth * patchX;
+			float patchTexOffsetY = patchTexHeight * patchY;
+
+			int indexStart = patchId * 16;
+			int indexEnd = indexStart + 16;
+
+			float dx = m_camera.getCameraPosition ().x - m_controlPoints[m_indices[indexStart + 7]].x;
+			float dy = m_camera.getCameraPosition ().y - m_controlPoints[m_indices[indexStart + 7]].y;
+			float dz = m_camera.getCameraPosition ().z - m_controlPoints[m_indices[indexStart + 7]].z;
+			float dist = sqrtf(dx*dx + dy*dy + dz*dz);
+
+			float z = min (100.0f, max (0.01f, dist));
+			float factor = -16.0f * log10f (z * 0.01f);
+
+			m_tessFactor.y = static_cast<unsigned int> (floorf (factor)) * 2;
+			UpdateBuffer (m_cbTessFactor, m_tessFactor);
+			UpdateBuffer (m_cbTextureOffset, XMFLOAT4 {patchTexOffsetX, patchTexOffsetY, patchTexWidth, patchTexHeight});
+
+			m_device.context ()->DrawIndexed (16, indexStart, 0);
+		}		
 
 		m_RenderGUI ();
 	}
