@@ -39,6 +39,8 @@ namespace mini::gk2 {
 					virtual bool ProcessMessage (WindowMessage & m) override;
 			};
 
+			static constexpr unsigned int PATCHES_WIDTH = 4;
+
 			ImGuiMessageHandler m_msgHandler;
 
 			dx_ptr<ID3D11Buffer> m_cbWorldMatrix;
@@ -48,8 +50,12 @@ namespace mini::gk2 {
 			dx_ptr<ID3D11Buffer> m_cbLightPos;			// pixel shader constant buffer slot 1
 
 			dx_ptr<ID3D11Buffer> m_vertexBuffer;
+			dx_ptr<ID3D11Buffer> m_indexBuffer;
+
+			unsigned int m_numVerticesX, m_numVerticesY;
+			unsigned int m_numVertices;
+			unsigned int m_numIndices;
 			unsigned int m_vertexStride;
-			unsigned int m_vertexCount;
 
 			Mesh m_meshTeapot;
 
@@ -64,6 +70,7 @@ namespace mini::gk2 {
 			XMFLOAT4X4 m_projectionMatrix, m_teapotMatrix;
 			XMFLOAT4 m_lightPos;
 
+			std::vector<unsigned short> m_indices;
 			std::vector<XMFLOAT3> m_controlPoints;
 
 			// user interface editable variables

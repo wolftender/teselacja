@@ -9,19 +9,39 @@ namespace mini::gk2 {
 			m_cbProjectionMatrix (m_device.CreateConstantBuffer<XMFLOAT4X4> ()),
 			m_cbViewMatrix (m_device.CreateConstantBuffer<XMFLOAT4X4, 2> ()),
 			m_cbSurfaceColor (m_device.CreateConstantBuffer<XMFLOAT4> ()),
-			m_cbLightPos (m_device.CreateConstantBuffer<XMFLOAT4> ()), 
-			m_vertexStride (sizeof (XMFLOAT3)),
-			m_vertexCount (16),
-			m_controlPoints (m_vertexCount),
+			m_cbLightPos (m_device.CreateConstantBuffer<XMFLOAT4> ()),
 			m_showWireframe (false), 
-			m_preset (0) {
+			m_preset (0),
+			m_numVerticesX (PATCHES_WIDTH * 3 + 1),
+			m_numVerticesY (PATCHES_WIDTH * 3 + 1),
+			m_numVertices (m_numVerticesX * m_numVerticesY),
+			m_numIndices (PATCHES_WIDTH * PATCHES_WIDTH * 16),
+			m_controlPoints (m_numVertices),
+			m_indices (m_numIndices),
+			m_vertexStride (sizeof (XMFLOAT3)) {
 
 		// initialize bezier patch control points
-		for (int i = 0; i < 16; ++i) {
-			float u = static_cast<float> (i % 4);
-			float v = static_cast<float> (i / 4);
+		const float offsetX = (static_cast<float> (m_numVerticesX - 1)) / 2.0f;
+		const float offsetY = (static_cast<float> (m_numVerticesY - 1)) / 2.0f;
 
-			m_controlPoints[i] = { u - 1.5f, 0.0f, v - 1.5f };
+		for (int i = 0; i < m_numVertices; ++i) {
+			float u = static_cast<float> (i % m_numVerticesX);
+			float v = static_cast<float> (i / m_numVerticesX);
+
+			m_controlPoints[i] = { u - offsetX, 0.0f, v - offsetY };
+		}
+
+		// initialize indices
+		for (int px = 0, i = 0; px < PATCHES_WIDTH; ++px) {
+			for (int py = 0; py < PATCHES_WIDTH; ++py) {
+				int bx = px * 3, by = py * 3;
+				for (int k = 0; k < 16; ++k) {
+					int x = bx + (k % 4), y = by + (k / 4);
+					int idx = (y * m_numVerticesX) + x;
+
+					m_indices[i++] = idx;
+				}
+			}
 		}
 
 		// projection matrix update
@@ -34,7 +54,7 @@ namespace mini::gk2 {
 		XMStoreFloat4x4 (&m_teapotMatrix, XMMatrixIdentity ());
 
 		// set light positions
-		m_lightPos = { 2.0f, 2.0f, 2.0f, 1.0f };
+		m_lightPos = { 10.0f, 10.0f, 10.0f, 1.0f };
 
 		// load meshes
 		m_meshTeapot = Mesh::LoadMesh (m_device, L"resources/meshes/teapot.mesh");
@@ -50,7 +70,8 @@ namespace mini::gk2 {
 		m_shaderHS = m_device.CreateHullShader (hsCode);
 
 		m_inputlayout = m_device.CreateInputLayout (TESS_INPUT_LAYOUT, vsCode);
-		m_vertexBuffer = m_device.CreateVertexBuffer<XMFLOAT3> (m_vertexCount);
+		m_vertexBuffer = m_device.CreateVertexBuffer<XMFLOAT3> (m_numVertices);
+		m_indexBuffer = m_device.CreateIndexBuffer (m_indices);
 		m_UpdateVertexBuffer ();
 
 		// We have to make sure all shaders use constant buffers in the same slots!
@@ -124,10 +145,11 @@ namespace mini::gk2 {
 		unsigned int offset = 0;
 		ID3D11Buffer * b = m_vertexBuffer.get ();
 		m_device.context ()->IASetInputLayout (m_inputlayout.get ());
+		m_device.context ()->IASetIndexBuffer (m_indexBuffer.get (), DXGI_FORMAT_R16_UINT, 0);
 		m_device.context ()->IASetVertexBuffers (0, 1, &b, &m_vertexStride, &offset);
 		m_device.context ()->IASetPrimitiveTopology (D3D11_PRIMITIVE_TOPOLOGY_16_CONTROL_POINT_PATCHLIST);
 
-		m_device.context ()->Draw (m_vertexCount, 0);
+		m_device.context ()->DrawIndexed (m_numIndices, 0, 0);
 
 		m_RenderGUI ();
 	}
@@ -147,9 +169,21 @@ namespace mini::gk2 {
 	}
 
 	void RoomTesselation::m_SetBezierPreset (RoomTesselation::BezierSurfacePreset preset) {
-		for (int u = 0; u < 4; ++u) {
-			for (int v = 0; v < 4; ++v) {
-				int index = u*4+v;
+		const int nx = m_numVerticesX;
+		const int ny = m_numVerticesY;
+		const float offsetX = (static_cast<float> (nx - 1)) / 2.0f;
+		const float offsetY = (static_cast<float> (ny - 1)) / 2.0f;
+
+		auto at = [this](int u, int v) {
+			return u * m_numVerticesX + v;
+		};
+
+		for (int u = 0; u < nx; ++u) {
+			for (int v = 0; v < ny; ++v) {
+				float nu = static_cast<float>(u) / static_cast<float>(nx);
+				float nv = static_cast<float>(v) / static_cast<float>(ny);
+
+				int index = at (u, v);
 
 				switch (preset) {
 					case BezierSurfacePreset::Flat:
@@ -157,28 +191,42 @@ namespace mini::gk2 {
 						break;
 
 					case BezierSurfacePreset::Hole:
-						{
-							float du = -abs(static_cast<float>(u) - 1.5f) + 1.5f;
-							float dv = -abs(static_cast<float>(v) - 1.5f) + 1.5f;
-
-							m_controlPoints[index].y = -du * dv * 2.0f;
-						}
-						break;
-
 					case BezierSurfacePreset::Mountain:
 						{
-						float du = -abs (static_cast<float>(u) - 1.5f) + 1.5f;
-						float dv = -abs (static_cast<float>(v) - 1.5f) + 1.5f;
+							float mx = min (u, nx - u - 1);
+							float my = min (v, ny - v - 1);
 
-							m_controlPoints[index].y = du * dv * 2.0f;
+							if (u % 3 == 0 && v % 3 == 0 && 
+								u > 0 && v > 0 && 
+								u+1 < nx && v+1 < ny && 
+								(u == ny-v-1 || v == u || ny-v-1 == nx-u-1 || nx-u-1 == v)) {
+								mx -= 0.5f;
+								my -= 0.5f;
+							}
+
+							float h = min (mx, my);
+							m_controlPoints[index].y = h;
 						}
 						break;
 
 					case BezierSurfacePreset::Sinusoid:
-						float t = static_cast<float>(u / 3.0f) * XM_PI * 2.0f;
+						float t = XM_PI * static_cast<float>(v) / 3.0f;
 						m_controlPoints[index].y = 2.0f * sinf (t);
 						break;
 				}
+			}
+		}
+
+		if (preset == BezierSurfacePreset::Hole || preset == BezierSurfacePreset::Mountain) {
+			if (PATCHES_WIDTH % 2 == 0) {
+				int h = nx/2;
+				m_controlPoints[at(h,h)].y -= 0.5f;
+			}
+		}
+
+		if (preset == BezierSurfacePreset::Hole) {
+			for (auto & p : m_controlPoints) {
+				p.y = -p.y;
 			}
 		}
 	}
@@ -187,7 +235,7 @@ namespace mini::gk2 {
 		D3D11_MAPPED_SUBRESOURCE rsc;
 		m_device.context ()->Map (m_vertexBuffer.get (), 0, D3D11_MAP_WRITE_DISCARD, 0, &rsc);
 
-		memcpy (rsc.pData, reinterpret_cast<const void*>(m_controlPoints.data ()), sizeof (XMFLOAT3) * m_vertexCount);
+		memcpy (rsc.pData, reinterpret_cast<const void*>(m_controlPoints.data ()), sizeof (XMFLOAT3) * m_numVertices);
 		m_device.context ()->Unmap (m_vertexBuffer.get (), 0);
 	}
 
